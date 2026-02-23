@@ -1,0 +1,125 @@
+﻿@using fortune.Models
+@model List<Kart>
+
+<div class="container mt-4">
+    <h2>Odaklan ve 3 kart seç</h2>
+
+    <div id="grid" class="tarot-grid mt-3">
+        @foreach (var k in Model)
+        {
+            <div class="tarot-card" data-id="@k.Id">
+                <div class="card-back"></div>
+            </div>
+        }
+    </div>
+
+    <div class="mt-4">
+        <label for="aiPrompt" class="form-label fw-semibold">
+            Fal sorunu açık bir şekilde sor:
+        </label>
+
+        <textarea id="aiPrompt"
+                  class="form-control"
+                  rows="3"
+                  placeholder="Örn: Kariyerimde önümüzdeki 3 ay ne olacak?"></textarea>
+    </div>
+
+    <button id="btnYorumla" class="btn btn-primary mt-3" disabled>Yorumla</button>
+
+    <div id="result" class="mt-4"></div>
+</div>
+
+<script>
+    const selected = new Set();
+
+    document.querySelectorAll(".tarot-card").forEach(el => {
+        el.addEventListener("click", () => {
+            const id = Number(el.dataset.id);
+
+            if (selected.has(id)) {
+                selected.delete(id);
+                el.classList.remove("selected");
+            } else {
+                if (selected.size >= 3) return;
+                selected.add(id);
+                el.classList.add("selected");
+            }
+
+            document.getElementById("btnYorumla").disabled = (selected.size !== 3);
+        });
+    });
+
+    document.getElementById("btnYorumla").addEventListener("click", async () => {
+        const ids = Array.from(selected);
+        const prompt = document.getElementById("aiPrompt").value.trim();
+
+        if (ids.length !== 3) {
+            alert("3 kart seçmelisin");
+            return;
+        }
+
+        if (!prompt) {
+            alert("Lütfen fal sorunu yaz");
+            return;
+        }
+
+        const payload = {
+            kartIdleri: ids,
+            prompt: prompt
+        };
+
+        const res = await fetch("/Fal/Yorumla", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            let msg = "Bir hata oluştu.";
+
+            try {
+                const ct = res.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                    const err = await res.json();
+                    msg = err.message || err.error || JSON.stringify(err);
+                } else {
+                    const t = (await res.text()).trim();
+                    if (t) msg = t;
+                }
+            } catch {
+                // ignore
+            }
+
+            alert(msg);
+            return;
+        }
+
+
+        const data = await res.json();
+
+        const cardsHtml = data.cards.map(c => `
+                <div class="selected-card">
+                    <img class="card-front" src="${c.resimYolu}" alt="${c.kartAdi}">
+                    <div class="selected-card-title">${escapeHtml(c.kartAdi)}</div>
+                </div>
+            `).join("");
+
+        document.getElementById("result").innerHTML = `
+                <h4>Seçilen Kartlar</h4>
+                <div class="selected-cards-wrap">${cardsHtml}</div>
+
+                <h4 class="mt-3">Yorum</h4>
+                <div class="reading-box">
+                    ${escapeHtml(data.reading)}
+                </div>
+            `;
+    });
+
+    function escapeHtml(s) {
+        return (s || "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;");
+    }
+</script>
